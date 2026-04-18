@@ -6,6 +6,7 @@ Run with:  pytest -q   (requires httpx + pytest-asyncio)
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,9 +16,20 @@ from app.main import create_app
 
 
 @pytest.fixture
-def client() -> TestClient:
-    settings = Settings(env="dev", allow_unverified_tokens=True)
-    return TestClient(create_app(settings))
+def client() -> Iterator[TestClient]:
+    # Force mock vendors regardless of a local .env the dev may have populated.
+    settings = Settings(
+        env="dev",
+        allow_unverified_tokens=True,
+        deepgram_api_key="",
+        xai_api_key="",
+        groq_api_key="",
+        cartesia_api_key="",
+        cartesia_voice_id="",
+    )
+    # `with` is required so FastAPI's lifespan runs and populates app.state.
+    with TestClient(create_app(settings)) as c:
+        yield c
 
 
 def test_healthz(client: TestClient) -> None:

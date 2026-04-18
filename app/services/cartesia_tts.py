@@ -17,7 +17,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 import numpy as np
-import websockets
+from websockets.asyncio.client import connect as ws_connect
 
 from app.config import Settings
 from app.core.logging import get_logger
@@ -97,7 +97,7 @@ class CartesiaClient:
             "X-API-Key": self.settings.cartesia_api_key,
             "Cartesia-Version": _CARTESIA_VERSION,
         }
-        async with websockets.connect(_CARTESIA_WS, additional_headers=headers) as ws:
+        async with ws_connect(_CARTESIA_WS, additional_headers=headers) as ws:
             await ws.send(
                 json.dumps(
                     {

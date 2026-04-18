@@ -22,7 +22,7 @@ import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
-import websockets
+from websockets.asyncio.client import connect as ws_connect
 
 from app.config import Settings
 from app.core.logging import get_logger
@@ -117,7 +117,7 @@ class DeepgramClient:
         url = _DEEPGRAM_WS_URL.format(model=self.settings.deepgram_model, sr=sample_rate)
         headers = {"Authorization": f"Token {self.settings.deepgram_api_key}"}
 
-        async with websockets.connect(url, additional_headers=headers) as dg:
+        async with ws_connect(url, additional_headers=headers) as dg:
             log.info("deepgram.live.connected", model=self.settings.deepgram_model)
 
             async def pump_audio() -> None:
