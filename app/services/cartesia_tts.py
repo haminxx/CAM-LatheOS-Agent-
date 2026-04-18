@@ -13,11 +13,12 @@ import asyncio
 import base64
 import json
 import time
+import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 import numpy as np
-import websockets
+from websockets.asyncio.client import connect as ws_connect
 
 from app.config import Settings
 from app.core.logging import get_logger
@@ -26,7 +27,10 @@ from app.core.telemetry import span
 log = get_logger(__name__)
 
 _CARTESIA_WS = "wss://api.cartesia.ai/tts/websocket"
-_CARTESIA_VERSION = "2024-06-10"
+# Cartesia requires an API version header; 2024-11-13 is the current stable.
+# https://docs.cartesia.ai/api-reference/tts/tts
+_CARTESIA_VERSION = "2024-11-13"
+_CARTESIA_MODEL = "sonic-2"
 
 _NATIVE_RATE = 24_000
 
@@ -97,18 +101,23 @@ class CartesiaClient:
             "X-API-Key": self.settings.cartesia_api_key,
             "Cartesia-Version": _CARTESIA_VERSION,
         }
-        async with websockets.connect(_CARTESIA_WS, additional_headers=headers) as ws:
+        # Context IDs must be alphanumeric + underscore + hyphen only — uuid4 hex is safe.
+        context_id = uuid.uuid4().hex
+        async with ws_connect(_CARTESIA_WS, additional_headers=headers) as ws:
             await ws.send(
                 json.dumps(
                     {
-                        "model_id": "sonic-english",
+                        "context_id": context_id,
+                        "model_id": _CARTESIA_MODEL,
                         "voice": {"mode": "id", "id": self.settings.cartesia_voice_id},
+                        "language": "en",
                         "output_format": {
                             "container": "raw",
                             "encoding": "pcm_s16le",
                             "sample_rate": _NATIVE_RATE,
                         },
                         "transcript": text,
+                        "continue": False,
                     }
                 )
             )
