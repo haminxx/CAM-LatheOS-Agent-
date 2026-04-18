@@ -7,7 +7,7 @@ The socket carries two channels interleaved:
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -61,6 +61,6 @@ class ErrorMsg(BaseModel):
 
 
 ServerEvent = Annotated[
-    Union[Transcript, Command, SpeechStart, SpeechEnd, ErrorMsg],
+    Transcript | Command | SpeechStart | SpeechEnd | ErrorMsg,
     Field(discriminator="type"),
 ]

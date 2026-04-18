@@ -11,8 +11,8 @@ can be tested headlessly.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
@@ -21,6 +21,7 @@ from app import __version__
 from app.config import Settings, get_settings
 from app.core.auth import TokenVerifier
 from app.core.logging import configure_logging, get_logger
+from app.core.telemetry import configure_tracing, instrument_fastapi
 from app.services.cartesia_tts import CartesiaClient
 from app.services.deepgram_stt import DeepgramClient
 from app.services.llm_router import LLMRouter
@@ -32,6 +33,7 @@ log = get_logger(__name__)
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
+    configure_tracing()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -54,12 +56,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
         lifespan=lifespan,
     )
+    instrument_fastapi(app)
 
     @app.get("/healthz")
     async def healthz() -> JSONResponse:
-        return JSONResponse(
-            {"status": "ok", "version": __version__, "env": settings.env}
-        )
+        return JSONResponse({"status": "ok", "version": __version__, "env": settings.env})
 
     @app.websocket("/ws/cam")
     async def cam_socket(ws: WebSocket) -> None:

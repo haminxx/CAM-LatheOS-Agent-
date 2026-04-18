@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
@@ -25,6 +26,7 @@ import websockets
 
 from app.config import Settings
 from app.core.logging import get_logger
+from app.core.telemetry import span
 from app.schemas.messages import Transcript
 
 log = get_logger(__name__)
@@ -47,11 +49,31 @@ class DeepgramClient:
         audio_queue: asyncio.Queue[bytes | None],
         sample_rate: int = 16_000,
     ) -> AsyncIterator[Transcript]:
-        if self._live():
-            async for t in self._stream_live(audio_queue, sample_rate):
-                yield t
-        else:
-            async for t in self._stream_mock(audio_queue):
+        with span(
+            "stt.deepgram.stream",
+            **{
+                "stt.vendor": "deepgram",
+                "stt.mode": "live" if self._live() else "mock",
+                "stt.model": self.settings.deepgram_model,
+                "stt.sample_rate": sample_rate,
+            },
+        ) as s:
+            started = time.perf_counter()
+            first_partial_at: float | None = None
+            first_final_at: float | None = None
+            stream = (
+                self._stream_live(audio_queue, sample_rate)
+                if self._live()
+                else self._stream_mock(audio_queue)
+            )
+            async for t in stream:
+                now = time.perf_counter()
+                if first_partial_at is None:
+                    first_partial_at = now - started
+                    s.set_attribute("stt.first_partial_ms", int(first_partial_at * 1000))
+                if t.is_final and first_final_at is None:
+                    first_final_at = now - started
+                    s.set_attribute("stt.first_final_ms", int(first_final_at * 1000))
                 yield t
 
     # ---------- mock ----------
@@ -66,7 +88,6 @@ class DeepgramClient:
         log.info("deepgram.mock.engaged")
         bytes_seen = 0
         interim_at = 16_000 * 2 * 1  # 1s of 16kHz s16le
-        final_at = 16_000 * 2 * 3
         phrase = "cam spin up the backend"
         words = phrase.split()
         idx = 0
@@ -75,17 +96,13 @@ class DeepgramClient:
             chunk = await audio_queue.get()
             if chunk is None:
                 if idx > 0:
-                    yield Transcript(
-                        text=" ".join(words[:idx]), is_final=True, confidence=0.95
-                    )
+                    yield Transcript(text=" ".join(words[:idx]), is_final=True, confidence=0.95)
                 return
             bytes_seen += len(chunk)
             if bytes_seen >= interim_at and idx < len(words):
                 idx += 1
                 bytes_seen = 0
-                yield Transcript(
-                    text=" ".join(words[:idx]), is_final=False, confidence=0.8
-                )
+                yield Transcript(text=" ".join(words[:idx]), is_final=False, confidence=0.8)
             if idx >= len(words):
                 yield Transcript(text=phrase, is_final=True, confidence=0.97)
                 idx = 0

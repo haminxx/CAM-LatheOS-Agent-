@@ -34,9 +34,9 @@ class AuthError(Exception):
 class TokenVerifier:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._table = boto3.resource(
-            "dynamodb", region_name=settings.aws_region
-        ).Table(settings.dynamodb_table)
+        self._table = boto3.resource("dynamodb", region_name=settings.aws_region).Table(
+            settings.dynamodb_table
+        )
 
     async def verify(self, token: str) -> HardwareIdentity:
         if self._settings.allow_unverified_tokens and self._settings.env == "dev":
@@ -49,9 +49,7 @@ class TokenVerifier:
             raise AuthError("missing hardware token")
 
         try:
-            response = await asyncio.to_thread(
-                self._table.get_item, Key={"token": token}
-            )
+            response = await asyncio.to_thread(self._table.get_item, Key={"token": token})
         except (BotoCoreError, ClientError) as exc:
             log.error("auth.dynamodb_error", error=str(exc))
             raise AuthError("verification backend unavailable") from exc

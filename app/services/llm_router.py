@@ -16,6 +16,7 @@ import httpx
 
 from app.config import Settings
 from app.core.logging import get_logger
+from app.core.telemetry import span
 from app.schemas.messages import Command
 
 log = get_logger(__name__)
@@ -46,12 +47,28 @@ class LLMRouter:
 
     async def complete(self, user_text: str) -> LLMResponse:
         if self.settings.llm_provider == "xai" and self.settings.xai_api_key:
-            raw = await self._call_xai(user_text)
+            provider, model = "xai", self.settings.xai_model
+            caller = self._call_xai
         elif self.settings.groq_api_key:
-            raw = await self._call_groq(user_text)
+            provider, model = "groq", self.settings.groq_model
+            caller = self._call_groq
         else:
-            raw = self._mock(user_text)
-        return self._parse(raw)
+            provider, model = "mock", "mock"
+            caller = None
+
+        with span(
+            "llm.complete",
+            **{
+                "llm.provider": provider,
+                "llm.model": model,
+                "llm.input_chars": len(user_text),
+            },
+        ) as s:
+            raw = self._mock(user_text) if caller is None else await caller(user_text)
+            parsed = self._parse(raw)
+            s.set_attribute("llm.output_chars", len(raw))
+            s.set_attribute("llm.has_command", parsed.command is not None)
+            return parsed
 
     async def _call_groq(self, user_text: str) -> str:
         resp = await self._client.post(

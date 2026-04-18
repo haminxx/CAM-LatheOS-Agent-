@@ -18,6 +18,7 @@ silently buffered to unbounded memory.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
 from dataclasses import dataclass
 
@@ -27,6 +28,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from app.config import Settings
 from app.core.auth import AuthError, HardwareIdentity, TokenVerifier
 from app.core.logging import get_logger
+from app.core.telemetry import span
 from app.schemas.messages import (
     Command,
     ErrorMsg,
@@ -76,12 +78,10 @@ class CamSession:
             log.info("session.disconnect_before_handshake", session=self.id)
             return
         except AuthError as exc:
-            await self._safe_send_event(
-                ErrorMsg(code="auth_failed", message=str(exc))
-            )
+            await self._safe_send_event(ErrorMsg(code="auth_failed", message=str(exc)))
             await self._safe_close(code=4401)
             return
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             await self._safe_send_event(
                 ErrorMsg(code="handshake_timeout", message="hello frame not received")
             )
@@ -109,9 +109,7 @@ class CamSession:
     # ---------- handshake ----------
 
     async def _handshake(self) -> None:
-        raw = await asyncio.wait_for(
-            self.ws.receive_text(), timeout=_HANDSHAKE_TIMEOUT_S
-        )
+        raw = await asyncio.wait_for(self.ws.receive_text(), timeout=_HANDSHAKE_TIMEOUT_S)
         hello = Hello.model_validate_json(raw)
         self.identity = await self.deps.verifier.verify(hello.hardware_token)
         log.info(
@@ -160,13 +158,21 @@ class CamSession:
                 continue
 
             log.info("pipeline.final", session=self.id, text=utterance)
-            llm_result = await self.deps.llm.complete(utterance)
+            with span(
+                "pipeline.turn",
+                **{
+                    "session.id": self.id,
+                    "user.id": self.identity.user_id if self.identity else "",
+                    "turn.utterance_chars": len(utterance),
+                },
+            ):
+                llm_result = await self.deps.llm.complete(utterance)
 
-            if llm_result.command:
-                await self._safe_send_event(llm_result.command)
+                if llm_result.command:
+                    await self._safe_send_event(llm_result.command)
 
-            if llm_result.spoken:
-                await self._stream_tts(llm_result.spoken)
+                if llm_result.spoken:
+                    await self._stream_tts(llm_result.spoken)
 
     async def _stream_tts(self, text: str) -> None:
         utter_id = uuid.uuid4().hex[:8]
@@ -181,9 +187,7 @@ class CamSession:
 
     # ---------- write helpers ----------
 
-    async def _safe_send_event(
-        self, event: ServerEvent | Transcript | Command
-    ) -> None:
+    async def _safe_send_event(self, event: ServerEvent | Transcript | Command) -> None:
         try:
             payload = orjson.dumps(event.model_dump())
             await self.ws.send_text(payload.decode())
@@ -191,12 +195,12 @@ class CamSession:
             raise
         except Exception as exc:
             log.warning(
-                "egress.send_failed", session=self.id, error=str(exc),
+                "egress.send_failed",
+                session=self.id,
+                error=str(exc),
                 event_type=event.__class__.__name__,
             )
 
     async def _safe_close(self, code: int) -> None:
-        try:
+        with contextlib.suppress(Exception):
             await self.ws.close(code=code)
-        except Exception:
-            pass
