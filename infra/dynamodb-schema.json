@@ -1,0 +1,20 @@
+{
+  "TableName": "CAM_HardwareTokens",
+  "AttributeDefinitions": [
+    { "AttributeName": "token", "AttributeType": "S" }
+  ],
+  "KeySchema": [
+    { "AttributeName": "token", "KeyType": "HASH" }
+  ],
+  "BillingMode": "PAY_PER_REQUEST",
+  "SSESpecification": { "Enabled": true },
+  "PointInTimeRecoverySpecification": { "PointInTimeRecoveryEnabled": true },
+  "ItemShape": {
+    "token":            "string (PK, 32-char HW fingerprint)",
+    "user_id":          "string",
+    "tier":             "string (dev|standard|pro)",
+    "quota_remaining":  "number (minutes of audio)",
+    "created_at":       "string (ISO-8601)",
+    "revoked":          "bool"
+  }
+}
