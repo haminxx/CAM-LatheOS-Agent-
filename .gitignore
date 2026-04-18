@@ -38,3 +38,7 @@ infra/terraform/.terraform.lock.hcl
 
 # Docker
 *.tar
+
+# Scratch audio emitted by local smoke tools
+*.raw
+
