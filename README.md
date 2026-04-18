@@ -4,6 +4,11 @@ AWS-hosted FastAPI orchestrator for **LatheOS**. Bridges local wake-word
 events to Deepgram (STT), Groq/xAI (reasoning), and Cartesia (TTS) over a
 single persistent WebSocket — optimised for sub-second round-trips.
 
+> **First time here?** Read [`SETUP.md`](./SETUP.md) for the zero-to-working
+> runbook (AWS account, vendor keys, Terraform, first hardware token, ISO
+> flash, verification). Everything below this line is reference material
+> you'll want *after* that walkthrough.
+
 ## Quick start (local dev, mock vendors)
 
 ```bash

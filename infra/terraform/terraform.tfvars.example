@@ -1,0 +1,28 @@
+# Copy to terraform.tfvars and fill in the blanks before `terraform apply`.
+# See ../../SETUP.md step 3 for where each of these values comes from.
+
+aws_region  = "us-east-1"
+environment = "prod"
+
+# From the VPC wizard (SETUP.md §3).
+vpc_id             = "vpc-REPLACE_ME"
+public_subnet_ids  = ["subnet-REPLACE_A", "subnet-REPLACE_B"]
+private_subnet_ids = ["subnet-REPLACE_C", "subnet-REPLACE_D"]
+
+# From Route53 (SETUP.md §1). Leave dns_zone_id = "" to skip the DNS
+# record and just get the ALB's raw DNS name back as an output.
+dns_zone_id         = "Z0_REPLACE_ME"
+dns_name            = "cam.example.com"
+acm_certificate_arn = "arn:aws:acm:us-east-1:REPLACE_ACCT:certificate/REPLACE_UUID"
+
+# For the very first `terraform apply`, point at :bootstrap so Terraform
+# can stand up the ASG before an image exists. After the first ECR push,
+# bump this to :latest (or a specific sha) and re-apply.
+image_uri = "REPLACE_ACCT.dkr.ecr.us-east-1.amazonaws.com/cam-proxy:bootstrap"
+
+# Size defaults are fine for a personal install. Bump asg_max_size only
+# when you expect more than ~500 concurrent LatheOS clients.
+asg_min_size         = 2
+asg_max_size         = 10
+asg_desired_capacity = 2
+instance_type        = "c7g.large"
